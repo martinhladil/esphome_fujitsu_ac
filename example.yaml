@@ -1,0 +1,71 @@
+# Example configuration for the Fujitsu AC UART climate component.
+
+esphome:
+  name: fujitsu-ac
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+  # The component talks on the hardware UART; keep the logger off UART0 pins,
+  # or use a USB/JTAG console. Lower the level to see frame traffic (VERBOSE).
+  level: DEBUG
+
+api:
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+external_components:
+  - source: github://martinhladil/esphome_fujitsu_ac
+    components: [fujitsu_ac]
+
+uart:
+  id: ac_uart
+  baud_rate: 9600 # 8N1 is the default frame format
+  rx_buffer_size: 256
+  tx_pin:
+    number: GPIO17
+    inverted: true # signal inversion (§1)
+  rx_pin:
+    number: GPIO16
+    inverted: true # signal inversion (§1)
+
+climate:
+  - platform: fujitsu_ac
+    id: living_room_ac
+    name: "Living Room AC"
+    uart_id: ac_uart
+    outdoor_temperature:
+      name: "Outdoor Temperature"
+    indoor_temperature:
+      name: "Indoor Temperature"
+
+# Optional extra entities. Each is gated by a capability flag on the unit; a
+# model that doesn't support a feature will simply ignore writes to it.
+switch:
+  - platform: fujitsu_ac
+    fujitsu_ac_id: living_room_ac
+    coil_dry:
+      name: "Coil Dry"
+    outdoor_low_noise:
+      name: "Outdoor Low Noise"
+    minimum_heat:
+      name: "Minimum Heat (10 °C)"
+    energy_saving_fan:
+      name: "Energy Saving Fan"
+    human_sensor:
+      name: "Human Sensor"
+
+select:
+  - platform: fujitsu_ac
+    fujitsu_ac_id: living_room_ac
+    vertical_vane:
+      name: "Vertical Vane"
+    horizontal_vane:
+      name: "Horizontal Vane"
