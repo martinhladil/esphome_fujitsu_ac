@@ -107,6 +107,12 @@ your model doesn't support a feature, just omit its key and the entity is never
 created. (If you'd rather keep an entity for use in automations but hide it from
 the dashboard, set `internal: true` on it — the standard ESPHome entity option.)
 
+Not sure what your unit supports? The component logs a capability summary at
+startup (vertical/horizontal swing, economy, powerful, minimum heat, human
+sensor, energy-saving fan, outdoor low noise, coil dry, and the vane position
+counts). Check the ESPHome logs after boot to see which features your model
+reports, then configure only those.
+
 ## Development
 
 `example.yaml` pulls the component from GitHub. When working on the component
