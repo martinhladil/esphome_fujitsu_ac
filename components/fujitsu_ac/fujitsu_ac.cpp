@@ -208,7 +208,7 @@ void FujitsuAC::handle_frame_(const uint8_t *buf, size_t len) {
           this->caps_ = this->regs_;  // snapshot capability values
           this->caps_read_ = true;
           this->build_traits_();
-          this->apply_capability_visibility_();
+          this->configure_vanes_();
           ESP_LOGD(TAG, "Capabilities read, entering POLL");
           this->state_ = State::POLL;
           this->state_batch_idx_ = 0;
@@ -348,21 +348,13 @@ bool FujitsuAC::cap_supported_(uint16_t cap_addr) const {
   return it != this->caps_.end() && it->second != 0;
 }
 
-void FujitsuAC::gate_entity_(EntityBase *ent, uint16_t cap_addr) {
-  if (ent == nullptr || this->cap_supported_(cap_addr))
-    return;
-  ESP_LOGD(TAG, "Hiding unsupported entity '%s'", ent->get_name().c_str());
-  ent->set_internal(true);
-}
-
 void FujitsuAC::configure_vane_(FujitsuACVaneSelect *sel, uint16_t count_addr, uint16_t swing_addr) {
   if (sel == nullptr)
     return;
   auto it = this->caps_.find(count_addr);
   uint16_t raw = (it == this->caps_.end()) ? 0 : it->second;
   if (raw == 0) {  // unit reports no airflow control on this axis
-    ESP_LOGD(TAG, "Hiding unsupported entity '%s'", sel->get_name().c_str());
-    sel->set_internal(true);
+    ESP_LOGD(TAG, "Vane '%s' reported unsupported by the unit", sel->get_name().c_str());
     return;
   }
   // The count register has been observed as a literal position count (e.g. 0x04
@@ -383,12 +375,7 @@ void FujitsuAC::configure_vane_(FujitsuACVaneSelect *sel, uint16_t count_addr, u
            swing ? " + swing" : "");
 }
 
-void FujitsuAC::apply_capability_visibility_() {
-  this->gate_entity_(this->coil_dry_switch_, CAP_COIL_DRY);
-  this->gate_entity_(this->outdoor_low_noise_switch_, CAP_OUTDOOR_LOW_NOISE);
-  this->gate_entity_(this->minimum_heat_switch_, CAP_MINIMUM_HEAT);
-  this->gate_entity_(this->energy_saving_fan_switch_, CAP_ENERGY_SAVING_FAN);
-  this->gate_entity_(this->human_sensor_switch_, CAP_HUMAN_SENSOR);
+void FujitsuAC::configure_vanes_() {
   this->configure_vane_(this->vertical_vane_select_, CAP_VERTICAL_AIRFLOW_COUNT, CAP_VERTICAL_SWING);
   this->configure_vane_(this->horizontal_vane_select_, CAP_HORIZONTAL_AIRFLOW_COUNT, CAP_HORIZONTAL_SWING);
 }
@@ -593,7 +580,7 @@ void FujitsuAC::publish_vane_(FujitsuACVaneSelect *sel, uint16_t addr) {
   const char *opt = vane_code_to_option(v);
   if (opt == nullptr)
     return;  // unknown/transient position code — leave the last value
-  if (sel->state != opt)
+  if (sel->current_option() != opt)
     sel->publish_state(opt);
 }
 
