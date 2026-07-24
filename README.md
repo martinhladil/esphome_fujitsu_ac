@@ -44,8 +44,10 @@ Benas. Please consider:
   EnergySavingFan, and HumanSensor.
 - **`sensor` entities:** optional indoor and outdoor temperature.
 - **Capability-gated:** the unit reports which features it supports during the
-  handshake; modes, presets, swing, vane options, and switches are enabled or
-  hidden accordingly, so a model that lacks a feature won't expose it.
+  handshake; climate modes, presets, swing, and each vane's option list are
+  enabled accordingly, and writes to an unsupported feature are ignored. The
+  optional `switch`/`select` entities are opt-in — just leave out any your model
+  doesn't have.
 - **Robust I/O:** two-stage handshake, capability discovery, continuous polling,
   and write-then-read-back confirmation — all non-blocking.
 
@@ -97,6 +99,13 @@ climate:
     outdoor_temperature: { name: "Outdoor Temperature" }
     indoor_temperature:  { name: "Indoor Temperature" }
 ```
+
+### Optional entities
+
+Every `switch` and `select` key is optional and only created if you list it. If
+your model doesn't support a feature, just omit its key and the entity is never
+created. (If you'd rather keep an entity for use in automations but hide it from
+the dashboard, set `internal: true` on it — the standard ESPHome entity option.)
 
 ## Development
 

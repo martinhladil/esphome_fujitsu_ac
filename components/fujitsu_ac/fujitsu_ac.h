@@ -132,11 +132,12 @@ class FujitsuAC : public climate::Climate, public uart::UARTDevice, public Compo
   // --- capabilities / traits ---
   void build_traits_();
   bool cap_supported_(uint16_t cap_addr) const;
-  // Hide optional child entities whose capability flag reports "unsupported".
-  void apply_capability_visibility_();
-  void gate_entity_(EntityBase *ent, uint16_t cap_addr);
-  // Narrow a vane select's options to the positions this unit actually supports
-  // (per its airflow-count capability register), or hide it when unsupported.
+  // Narrow each configured vane select's options to the positions this unit
+  // actually supports (per its airflow-count capability register). Entities are
+  // opt-in via YAML and can't be removed at runtime (Home Assistant reads the
+  // entity list before capabilities are known over UART), so a select for an
+  // axis the unit lacks is left in place and its writes simply no-op.
+  void configure_vanes_();
   void configure_vane_(FujitsuACVaneSelect *sel, uint16_t count_addr, uint16_t swing_addr);
 
   // --- state mirror -> climate / sensors ---
