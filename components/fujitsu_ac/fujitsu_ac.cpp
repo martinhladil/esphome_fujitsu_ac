@@ -382,7 +382,7 @@ void FujitsuAC::configure_vanes_() {
 
 void FujitsuAC::build_traits_() {
   climate::ClimateTraits t;
-  t.add_feature_flags(climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE);
+  t.add_feature_flags(climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE | climate::CLIMATE_SUPPORTS_ACTION);
   t.set_visual_min_temperature(16.0f);
   t.set_visual_max_temperature(30.0f);
   t.set_visual_temperature_step(0.5f);
@@ -459,6 +459,7 @@ void FujitsuAC::publish_from_mirror_() {
   const float prev_current = this->current_temperature;
   const climate::ClimateSwingMode prev_swing = this->swing_mode;
   const climate::ClimatePreset prev_preset = this->preset.value_or(climate::CLIMATE_PRESET_NONE);
+  const climate::ClimateAction prev_action = this->action;
 
   // Mode / Power (§10.1, §10.2). OFF when power is off.
   uint16_t power = ON_VALUE;
@@ -538,6 +539,9 @@ void FujitsuAC::publish_from_mirror_() {
       this->outdoor_temperature_sensor_->publish_state(t);
   }
 
+  // Inferred activity — depends on the mode and both temperatures set above.
+  this->action = this->current_action_();
+
   // Optional child entities (§9.3 feature registers, §10.4 airflow position).
   this->publish_switch_(this->coil_dry_switch_, REG_COIL_DRY);
   this->publish_switch_(this->outdoor_low_noise_switch_, REG_OUTDOOR_LOW_NOISE);
@@ -559,9 +563,50 @@ void FujitsuAC::publish_from_mirror_() {
                        temp_changed(this->target_temperature, prev_target) ||
                        temp_changed(this->current_temperature, prev_current) ||
                        this->swing_mode != prev_swing ||
-                       this->preset.value_or(climate::CLIMATE_PRESET_NONE) != prev_preset;
+                       this->preset.value_or(climate::CLIMATE_PRESET_NONE) != prev_preset ||
+                       this->action != prev_action;
   if (changed)
     this->publish_state();
+}
+
+// The unit reports no compressor or valve state, so "is it cooling right now?"
+// has to be inferred: within TOLERANCE of the setpoint the unit is assumed to
+// have settled, which is how the reference firmware drives the same badge.
+// It is a display hint, not a measurement — brief disagreements with the real
+// hardware are expected.
+climate::ClimateAction FujitsuAC::current_action_() const {
+  static const float TOLERANCE = 0.5f;
+
+  const float current = this->current_temperature;
+  const float target = this->target_temperature;
+  // Before the first valid reading, report what the mode implies rather than a
+  // possibly wrong idle.
+  const bool have_temps = !std::isnan(current) && !std::isnan(target);
+
+  switch (this->mode) {
+    case climate::CLIMATE_MODE_OFF:
+      return climate::CLIMATE_ACTION_OFF;
+    case climate::CLIMATE_MODE_FAN_ONLY:
+      return climate::CLIMATE_ACTION_FAN;
+    case climate::CLIMATE_MODE_DRY:
+      return climate::CLIMATE_ACTION_DRYING;
+    case climate::CLIMATE_MODE_COOL:
+      if (!have_temps || current + TOLERANCE >= target)
+        return climate::CLIMATE_ACTION_COOLING;
+      return climate::CLIMATE_ACTION_IDLE;
+    case climate::CLIMATE_MODE_HEAT:
+      if (!have_temps || current - TOLERANCE <= target)
+        return climate::CLIMATE_ACTION_HEATING;
+      return climate::CLIMATE_ACTION_IDLE;
+    case climate::CLIMATE_MODE_HEAT_COOL:
+      if (have_temps && current >= target + TOLERANCE)
+        return climate::CLIMATE_ACTION_COOLING;
+      if (have_temps && current <= target - TOLERANCE)
+        return climate::CLIMATE_ACTION_HEATING;
+      return climate::CLIMATE_ACTION_IDLE;
+    default:
+      return climate::CLIMATE_ACTION_IDLE;
+  }
 }
 
 void FujitsuAC::publish_switch_(FujitsuACSwitch *sw, uint16_t addr) {
