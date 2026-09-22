@@ -788,7 +788,6 @@ void FujitsuAC::control(const climate::ClimateCall &call) {
 // ---------------------------------------------------------------------------
 void FujitsuAC::dump_config() {
   ESP_LOGCONFIG(TAG, "Fujitsu AC (UART):");
-  this->check_uart_settings(9600);
   ESP_LOGCONFIG(TAG, "  Capabilities read: %s", YESNO(this->caps_read_));
   if (this->caps_read_) {
     ESP_LOGCONFIG(TAG, "  Vertical swing:    %s", YESNO(this->cap_supported_(CAP_VERTICAL_SWING)));
