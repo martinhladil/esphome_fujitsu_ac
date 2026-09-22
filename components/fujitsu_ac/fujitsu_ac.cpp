@@ -490,7 +490,7 @@ void FujitsuAC::publish_from_mirror_() {
   }
 
   // Setpoint (§10.6). 0xFFFF in Fan mode -> no target.
-  if (this->reg_(REG_SETPOINT, v) && v != SETPOINT_FAN_MODE)
+  if (this->reg_(REG_SETPOINT, v) && v != VALUE_UNAVAILABLE)
     this->target_temperature = decode_setpoint(v);
 
   // Swing (§10.5)
@@ -521,8 +521,9 @@ void FujitsuAC::publish_from_mirror_() {
   else
     this->preset = climate::CLIMATE_PRESET_NONE;
 
-  // Indoor temperature (§10.7) -> current_temperature + optional sensor
-  if (this->reg_(REG_INDOOR_TEMP, v)) {
+  // Indoor temperature (§10.7) -> current_temperature + optional sensor.
+  // 0xFFFF means the sensor has no reading yet; decoding it would publish 605 °C.
+  if (this->reg_(REG_INDOOR_TEMP, v) && v != VALUE_UNAVAILABLE) {
     float t = decode_temp_offset(v, false);
     this->current_temperature = t;
     if (this->indoor_temperature_sensor_ != nullptr &&
@@ -531,8 +532,10 @@ void FujitsuAC::publish_from_mirror_() {
       this->indoor_temperature_sensor_->publish_state(t);
   }
 
-  // Outdoor temperature (§10.8, signed)
-  if (this->outdoor_temperature_sensor_ != nullptr && this->reg_(REG_OUTDOOR_TEMP, v)) {
+  // Outdoor temperature (§10.8, signed). 0xFFFF is "no reading" here too — as a
+  // signed value it decodes to a plausible-looking -50.3 °C, so it must be filtered.
+  if (this->outdoor_temperature_sensor_ != nullptr && this->reg_(REG_OUTDOOR_TEMP, v) &&
+      v != VALUE_UNAVAILABLE) {
     float t = decode_temp_offset(v, true);
     if (!this->outdoor_temperature_sensor_->has_state() ||
         std::abs(this->outdoor_temperature_sensor_->get_raw_state() - t) >= 0.01f)

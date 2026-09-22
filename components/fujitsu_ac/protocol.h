@@ -92,7 +92,9 @@ enum FanValue : uint16_t {
 
 static const uint16_t ON_VALUE = 0x0001;
 static const uint16_t OFF_VALUE = 0x0000;
-static const uint16_t SETPOINT_FAN_MODE = 0xFFFF;  // setpoint reported in Fan mode
+// "No reading": reported for the setpoint in Fan mode (§10.6), and for either
+// temperature register while its sensor has no valid value yet (§10.7, §10.8).
+static const uint16_t VALUE_UNAVAILABLE = 0xFFFF;
 
 // Temperature offset encoding (§10.7 / §10.8): °C = (raw - 5025) / 100
 static const int32_t TEMP_OFFSET = 5025;

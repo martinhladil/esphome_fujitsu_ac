@@ -494,6 +494,10 @@ Offset-encoded; subtract **5025** then divide by 100:
 This register updates frequently; if you forward it to an upstream system you
 may want to rate-limit or debounce it (the value is reported in 0.01 °C units).
 
+While the sensor has no valid reading — typically right after the controller
+initialises — the unit reports **`0xFFFF`**, which must be discarded rather than
+decoded (it would yield 605.1 °C).
+
 ### 10.8 Outdoor temperature (`0x2020`, OutdoorTemp)
 
 Same offset encoding, but **signed** (can be negative):
@@ -501,6 +505,10 @@ Same offset encoding, but **signed** (can be negative):
 ```
 °C = (value − 5025) / 100      (signed)
 ```
+
+`0xFFFF` means "no reading" here as well (§10.7). Because this register is
+signed the sentinel decodes to a plausible −50.3 °C, so it has to be filtered
+explicitly.
 
 ---
 
