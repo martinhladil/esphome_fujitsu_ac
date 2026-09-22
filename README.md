@@ -38,6 +38,11 @@ Benas. Please consider:
   (Auto/Quiet/Low/Medium/High), target temperature (16–30 °C, 0.5 °C step),
   vertical/horizontal swing, and current indoor temperature.
 - **Presets:** **ECO** (Economy) and **BOOST** (Powerful).
+- **Action badge:** the current-activity state Home Assistant shows on the
+  climate card (heating / cooling / drying / fan / idle / off). The bus carries
+  no compressor state, so this is *inferred* from the mode and how far the
+  indoor temperature is from the setpoint (within ±0.5 °C counts as settled) —
+  a display hint rather than a measurement.
 - **`select` entities:** vertical and horizontal vane *position* (Positions 1–6,
   plus Swing and a reported-only Closed state).
 - **`switch` entities:** CoilDry, OutdoorLowNoise, MinimumHeat (10 °C),

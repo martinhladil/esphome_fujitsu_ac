@@ -142,6 +142,9 @@ class FujitsuAC : public climate::Climate, public uart::UARTDevice, public Compo
 
   // --- state mirror -> climate / sensors ---
   void publish_from_mirror_();
+  // Home Assistant's action badge. The bus carries no compressor state, so this
+  // is inferred from the mode and the indoor/target temperature pair.
+  climate::ClimateAction current_action_() const;
   void publish_switch_(FujitsuACSwitch *sw, uint16_t addr);
   void publish_vane_(FujitsuACVaneSelect *sel, uint16_t addr);
   bool reg_(uint16_t addr, uint16_t &out) const;
