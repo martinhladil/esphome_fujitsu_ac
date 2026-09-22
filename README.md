@@ -28,7 +28,7 @@ Benas. Please consider:
 
 - ⭐ **Star the original repo:** https://github.com/Benas09/FujitsuAC
 - 💚 **Donate (Stripe):** https://donate.stripe.com/8x23cvdbXdht57Zfym1sQ05
-- 🔌 **Buy a ready-made dongle (Stripe):** https://buy.stripe.com/6oU28r6Nz3GT8kbbi61sQ06
+- 🔌 **Buy a ready-made dongle:** https://www.faircon.lt
 
 ---
 
@@ -79,8 +79,8 @@ See [docs/PROTOCOL.md §1](docs/PROTOCOL.md). Key points:
 > converter, logic-level shifter, JST/USB connectors), and PCB references — see
 > the **[original Benas09/FujitsuAC project](https://github.com/Benas09/FujitsuAC)**,
 > which documents the hardware build in much more depth. You can also
-> [buy a ready-made dongle](https://buy.stripe.com/6oU28r6Nz3GT8kbbi61sQ06) from
-> the author instead of building one.
+> [buy a ready-made dongle](https://www.faircon.lt) from the author instead of
+> building one.
 
 ## Usage
 
