@@ -10,6 +10,9 @@ namespace fujitsu_ac {
 
 static const char *const TAG = "fujitsu_ac";
 
+// Consecutive unanswered requests in POLL before the link is considered lost.
+static const uint8_t MAX_MISSED_RESPONSES = 5;
+
 // Fixed handshake frames (§5). Stored verbatim including checksum.
 static const uint8_t INIT1_REQUEST[] = {0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFB};
 static const uint8_t INIT1_RESPONSE[] = {0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0xFF, 0xFD};
@@ -92,6 +95,7 @@ void FujitsuAC::start_handshake_() {
   this->rx_index_ = 0;
   this->cap_batch_idx_ = 0;
   this->state_batch_idx_ = 0;
+  this->missed_responses_ = 0;
   // Send the first request immediately.
   this->last_request_time_ = millis() - INTER_REQUEST_MS;
 }
@@ -177,6 +181,8 @@ void FujitsuAC::handle_frame_(const uint8_t *buf, size_t len) {
   }
 
   this->waiting_for_response_ = false;
+  this->missed_responses_ = 0;
+  this->status_clear_warning();
 
   switch (this->state_) {
     case State::HANDSHAKE_INIT1:
@@ -257,11 +263,22 @@ void FujitsuAC::handle_read_response_(const uint8_t *buf, size_t len) {
 
 void FujitsuAC::on_response_timeout_() {
   this->waiting_for_response_ = false;
-  if (this->state_ == State::POLL) {
-    ESP_LOGW(TAG, "No response from unit");
-    // Surface "no response" without tearing down the link; retry next cycle.
-  } else {
-    ESP_LOGW(TAG, "Handshake timeout, restarting");
+  this->awaiting_readback_ = false;
+  if (this->state_ != State::POLL) {
+    // Stays quiet after the first report so an unplugged unit doesn't flood the log.
+    if (!this->status_has_warning())
+      ESP_LOGW(TAG, "Handshake timeout, retrying until the unit answers");
+    this->status_set_warning();
+    this->start_handshake_();
+    return;
+  }
+  ESP_LOGW(TAG, "No response from unit");
+  // A single miss is retried on the next cycle. A run of them means the unit
+  // was power-cycled or disconnected, so start over from the handshake (§5)
+  // rather than polling a link that may no longer be established.
+  if (++this->missed_responses_ >= MAX_MISSED_RESPONSES) {
+    ESP_LOGW(TAG, "Link lost after %u unanswered requests, restarting handshake", MAX_MISSED_RESPONSES);
+    this->status_set_warning();
     this->start_handshake_();
   }
 }

@@ -191,6 +191,7 @@ class FujitsuAC : public climate::Climate, public uart::UARTDevice, public Compo
   // Index into the capability / state batch tables
   uint8_t cap_batch_idx_{0};
   uint8_t state_batch_idx_{0};
+  uint8_t missed_responses_{0};  // consecutive POLL timeouts
 
   // Pending writes and the addresses to read back after a write (§7). Each
   // queue entry is one frame: usually a single register, but airflow position
