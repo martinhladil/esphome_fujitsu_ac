@@ -29,10 +29,17 @@ Throughout this document:
 | Logic level     | AC side needs a logic-level shifter; supply via 12 V → 5 V DC/DC |
 
 The AC connector (4-pin) carries `+12V`, `GND`, and the two data lines (one
-controller→unit, one unit→controller).
+controller→unit, one unit→controller). Units have one of two socket styles:
 
-> ⚠️ The AC data/GND pins are **not galvanically isolated** and not referenced
-> to earth GND. Never cross-connect AC GND to a PC/laptop GND.
+| Pin | JST-style socket (left to right) | USB-style socket (top to bottom) |
+|-----|----------------------------------|----------------------------------|
+| 1   | `+12V`                           | `+12V`                           |
+| 2   | `GND`                            | data, unit → controller          |
+| 3   | data, unit → controller          | data, controller → unit          |
+| 4   | data, controller → unit          | `GND`                            |
+
+> **Warning:** the AC data/GND pins are **not galvanically isolated** and not
+> referenced to earth GND. Never cross-connect AC GND to a PC/laptop GND.
 
 **Signal inversion is essential** — if your UART peripheral cannot invert TX/RX
 in hardware, add an external inverter. Without it the framing will look like
@@ -98,8 +105,15 @@ recovery mechanism; choose one:
   contiguous burst, a quiet period between bytes marks a frame boundary. If
   **≥ 20 ms** elapse between two received bytes, discard the buffer and restart.
   At 9600 baud a byte is ~1 ms, so 20 ms reliably separates frames. This is
-  cheap but couples the parser to wall-clock timing and can misbehave under
-  scheduler jitter or batched/buffered UART reads.
+  only safe if bytes are timestamped **on arrival** (in the UART interrupt or
+  driver). A main loop that drains a buffered UART sees the time it *read* each
+  byte instead, and a 40-byte response takes over 40 ms on the wire, so any
+  loop stall longer than the gap splits a perfectly good frame.
+
+Because the bus is strictly request/response (§8), a controller can also simply
+**empty its receive buffer whenever it sends a request**: anything still
+buffered at that point belongs to an abandoned exchange. Combined with
+checksum-driven sliding this needs no timing at all.
 
 ---
 
@@ -266,8 +280,11 @@ Suggested timing (values known to work; tune as needed):
 | Inter-request interval       | ~400 ms | spacing between consecutive requests     |
 | Response timeout             | ~200 ms | how long to wait before treating a request as unanswered |
 
-On a response timeout, retry the handshake during the init phase, or surface a
-"no response" condition once the link is established.
+On a response timeout during the init phase, retry the handshake from Init 1.
+Once the link is established a single missed response can simply be retried on
+the next cycle, but a run of them (five in a row is a reasonable threshold)
+means the unit was power-cycled or disconnected: surface a "no response"
+condition and start again from the handshake.
 
 ### Request sequence
 
@@ -316,9 +333,9 @@ unsupported (hide the entity); otherwise treat the value as a position count
 | `0x0001` | Initial0                          | handshake/identity probe                  |
 | `0x0101` | Initial1                          | handshake/identity probe                  |
 | `0x0110`–`0x0120` | Initial2 … Initial11     | misc identity/capability probes           |
-| `0x0130` | VerticalAirflowDirectionCount     | vertical airflow capability code (non-zero = supported; not a literal count — see §9.1 / §10.4) |
+| `0x0130` | VerticalAirflowDirectionCount     | number of vertical positions; `0` = unsupported (see note above) |
 | `0x0131` | VerticalSwingSupported            | 1 = vertical swing available              |
-| `0x0142` | HorizontalAirflowDirectionCount   | horizontal airflow capability code (non-zero = supported; not a literal count — see §9.1 / §10.4) |
+| `0x0142` | HorizontalAirflowDirectionCount   | number of horizontal positions; `0` = unsupported (see note above) |
 | `0x0143` | HorizontalSwingSupported          | 1 = horizontal swing available            |
 | `0x0150` | EconomyModeSupported              | 1 = economy mode available                |
 | `0x0151` | MinimumHeatSupported              | 1 = 10 °C minimum-heat available          |
@@ -453,10 +470,9 @@ UI that has a single OFF/Auto/Cool/… selector therefore maps OFF to
 
 Positions `0x01`…`0x06` plus the dedicated `Swing` code (`0x20`) are the defined
 settable values. `0x0000` is reported (not set) while the unit is powered off and
-maps to a reported-only **Closed** state. The `…DirectionCount` capability
-register only indicates whether airflow control is available (non-zero); it is
-**not** a literal position count (§9.1), so cap the number of selectable positions
-at **6**.
+maps to a reported-only **Closed** state. How many of the six positions a unit
+accepts comes from its `…DirectionCount` capability register, clamped to 1–6
+(§9.1).
 
 ### 10.5 On/Off feature registers
 
@@ -543,6 +559,11 @@ write at a time, confirmed by read-back before sending the next) to keep its
 local state mirror consistent — this is a controller design choice, not a unit
 requirement.
 
+A controller that skips writes whose value the unit already holds must compare
+against writes it has queued or sent but not yet read back, not only against
+its mirror. The mirror lags by up to a poll cycle, so an "off" issued right
+after an "on" would otherwise look redundant and be dropped.
+
 ---
 
 ## 12. AC-Side (Slave) Behaviour Summary
@@ -598,5 +619,5 @@ names and the "unknown / internal" labels reflect what has been mapped so far;
 several `0x12xx`/`0x14xx` registers are exchanged but their meaning is not yet
 established, and the J-series variant differs (see §5).
 
-*FGLair® is a trademark of Fujitsu General Limited. This is an independent,
+*FGLair is a registered trademark of Fujitsu General Limited. This is an independent,
 unaffiliated description and is not endorsed by Fujitsu.*
