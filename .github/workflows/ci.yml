@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # Weekly, so a new ESPHome release that breaks the build shows up without a push.
+  schedule:
+    - cron: "0 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-tests:
+    name: Host tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run the protocol test
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -I components/fujitsu_ac tests/test_protocol.cpp -o test_protocol
+          ./test_protocol
+
+  compile:
+    name: Compile (ESPHome ${{ matrix.esphome }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - esphome: stable
+            pip_args: ""
+          - esphome: beta
+            pip_args: "--pre"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install ESPHome
+        run: |
+          pip install ${{ matrix.pip_args }} esphome
+          esphome version
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ matrix.esphome }}-${{ hashFiles('example.yaml') }}
+          restore-keys: platformio-${{ matrix.esphome }}-
+      # example.yaml pulls the component from GitHub; build the checked-out tree instead.
+      - name: Point the example at the local component
+        run: |
+          sed 's|source: github://martinhladil/esphome_fujitsu_ac|source: { type: local, path: components }|' example.yaml > ci.yaml
+          grep -q 'type: local' ci.yaml
+          printf 'wifi_ssid: "ci"\nwifi_password: "ci-password"\n' > secrets.yaml
+      - name: Compile
+        run: esphome compile ci.yaml

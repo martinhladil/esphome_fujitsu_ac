@@ -3,8 +3,10 @@
 // the spec byte-for-byte. From the repo root:
 //   c++ -std=c++17 -I components/fujitsu_ac tests/test_protocol.cpp -o /tmp/t && /tmp/t
 #include "protocol.h"
+#undef NDEBUG  // the checks below are asserts; keep them in optimised builds too
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 using namespace esphome::fujitsu_ac;
