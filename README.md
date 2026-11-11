@@ -35,10 +35,11 @@ See [Credits](#credits).
   cut), the component flags a warning and redoes the handshake until it is back.
 
 Everything beyond the climate entity is optional. With the sensors, switches
-and a vane select configured, the device page in Home Assistant looks like this:
+and a vane select configured, the device page in Home Assistant shows these
+cards:
 
 <p align="center">
-  <img src="docs/images/ha-device.png" width="560" alt="Device page in Home Assistant" />
+  <img src="docs/images/ha-device.png" width="340" alt="Controls, sensors and configuration cards on the Home Assistant device page" />
 </p>
 
 ## Compatibility
