@@ -119,15 +119,11 @@ void FujitsuAC::loop() {
 // RX path (§2.1, §3)
 // ---------------------------------------------------------------------------
 void FujitsuAC::read_uart_() {
-  const uint32_t now = millis();
+  // No inter-byte gap reset (§2.1) here: bytes are timed when loop() drains
+  // them, not when they arrive, so a busy loop would split a contiguous frame.
+  // Frames are delimited by LEN + checksum, and send_frame_() starts each
+  // exchange with an empty buffer.
   while (this->available()) {
-    // Inter-byte gap reset: a quiet period marks a frame boundary (§2.1).
-    if (this->rx_index_ > 0 && (now - this->last_byte_time_) >= INTER_BYTE_GAP_MS) {
-      ESP_LOGV(TAG, "Inter-byte gap, discarding %u buffered bytes", (unsigned) this->rx_index_);
-      this->rx_index_ = 0;
-    }
-    this->last_byte_time_ = now;
-
     uint8_t b;
     if (!this->read_byte(&b))
       break;
@@ -289,6 +285,9 @@ void FujitsuAC::on_response_timeout_() {
 void FujitsuAC::send_frame_(uint8_t cmd, const uint8_t *payload, uint8_t payload_len) {
   uint8_t frame[MAX_FRAME_LEN];
   size_t len = build_frame(cmd, payload, payload_len, frame);
+  // The unit only speaks when asked, so anything still buffered is the tail of
+  // an abandoned exchange.
+  this->rx_index_ = 0;
   this->write_array(frame, len);
   this->pending_cmd_ = cmd;
   this->waiting_for_response_ = true;

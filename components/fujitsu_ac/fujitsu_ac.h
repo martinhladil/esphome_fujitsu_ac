@@ -56,7 +56,6 @@ enum class State : uint8_t {
 // Timing (§8)
 static const uint32_t INTER_REQUEST_MS = 400;
 static const uint32_t RESPONSE_TIMEOUT_MS = 200;
-static const uint32_t INTER_BYTE_GAP_MS = 20;  // §2.1 frame boundary
 
 class FujitsuAC : public climate::Climate, public uart::UARTDevice, public Component {
  public:
@@ -177,7 +176,6 @@ class FujitsuAC : public climate::Climate, public uart::UARTDevice, public Compo
   bool waiting_for_response_{false};
   uint8_t pending_cmd_{0};            // CMD we expect the unit to echo
   uint32_t last_request_time_{0};
-  uint32_t last_byte_time_{0};
 
   // RX accumulation buffer (§2.1)
   uint8_t rx_buf_[MAX_FRAME_LEN];
