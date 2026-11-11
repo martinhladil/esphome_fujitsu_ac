@@ -151,9 +151,12 @@ class FujitsuAC : public climate::Climate, public uart::UARTDevice, public Compo
 
   // --- write queue (§7/§11) ---
   // Both return false when the coil-dry / minimum-heat interlock rejects the
-  // write; they also drop redundant writes whose value already matches the mirror.
+  // write or the queue is full; they also drop redundant writes whose value
+  // the register already holds or is about to (see expected_reg_).
   bool queue_write_(uint16_t addr, uint16_t value);
   bool queue_write_group_(const std::vector<std::pair<uint16_t, uint16_t>> &regs);
+  bool push_write_(const std::vector<std::pair<uint16_t, uint16_t>> &regs);
+  bool expected_reg_(uint16_t addr, uint16_t &out) const;
   bool mirror_on_(uint16_t addr) const;      // true if the mirrored register reads ON
   bool write_allowed_(uint16_t addr) const;  // coil-dry / minimum-heat interlock
 
@@ -191,8 +194,11 @@ class FujitsuAC : public climate::Climate, public uart::UARTDevice, public Compo
 
   // Pending writes and the addresses to read back after a write (§7). Each
   // queue entry is one frame: usually a single register, but airflow position
-  // is a multi-register frame (§11).
+  // is a multi-register frame (§11). Writes are refused once the queue holds
+  // MAX_PENDING_WRITES frames.
+  static const size_t MAX_PENDING_WRITES = 16;
   std::vector<std::vector<std::pair<uint16_t, uint16_t>>> write_queue_;
+  std::vector<std::pair<uint16_t, uint16_t>> in_flight_write_;  // sent, not yet ACKed
   std::vector<uint16_t> readback_addrs_;
   bool awaiting_readback_{false};
 

@@ -227,11 +227,17 @@ void FujitsuAC::handle_frame_(const uint8_t *buf, size_t len) {
         }
         this->publish_from_mirror_();
       } else if (cmd == CMD_WRITE) {
-        if (buf[STATUS_OFFSET] == STATUS_OK)
+        if (buf[STATUS_OFFSET] == STATUS_OK) {
           ESP_LOGD(TAG, "Write acknowledged");
-        else
+          // Reflect the accepted values right away so a follow-up command is
+          // compared against them rather than the pre-write mirror.
+          for (const auto &kv : this->in_flight_write_)
+            this->regs_[kv.first] = kv.second;
+        } else {
           ESP_LOGW(TAG, "Write rejected (status 0x%02X)", buf[STATUS_OFFSET]);
-        // A read-back of the written addresses follows on the next request.
+        }
+        this->in_flight_write_.clear();
+        // A read-back of the written addresses follows once the queue drains.
       }
       break;
   }
@@ -313,15 +319,21 @@ void FujitsuAC::send_next_request_() {
     }
 
     case State::POLL:
+      // Any earlier write has been answered or has timed out by now.
+      this->in_flight_write_.clear();
       // A pending write takes priority; then read back the written addresses.
       if (!this->write_queue_.empty()) {
         // Each queue entry is one frame: a single register (§7), or the
         // multi-register airflow-position frame (§11).
         std::vector<std::pair<uint16_t, uint16_t>> group = this->write_queue_.front();
         this->write_queue_.erase(this->write_queue_.begin());
-        this->readback_addrs_.clear();
-        for (const auto &kv : group)
-          this->readback_addrs_.push_back(kv.first);
+        // Accumulate across back-to-back writes; one read-back covers them all.
+        for (const auto &kv : group) {
+          if (std::find(this->readback_addrs_.begin(), this->readback_addrs_.end(), kv.first) ==
+              this->readback_addrs_.end())
+            this->readback_addrs_.push_back(kv.first);
+        }
+        this->in_flight_write_ = group;
         if (group.size() == 1)
           ESP_LOGD(TAG, "-> Write reg 0x%04X = 0x%04X", group[0].first, group[0].second);
         else
@@ -697,9 +709,53 @@ bool FujitsuAC::queue_write_(uint16_t addr, uint16_t value) {
     return false;
   }
   uint16_t cur;
-  if (this->reg_(addr, cur) && cur == value)
-    return true;  // already at the requested value — accepted, but nothing to send
-  this->write_queue_.push_back({{addr, value}});
+  if (this->expected_reg_(addr, cur) && cur == value)
+    return true;  // already at (or heading to) the requested value — nothing to send
+  // Coalesce with a queued write of the same register (e.g. a dragged setpoint
+  // slider) unless a later multi-register frame also touches it.
+  for (auto it = this->write_queue_.rbegin(); it != this->write_queue_.rend(); ++it) {
+    bool touches = false;
+    for (const auto &kv : *it)
+      touches = touches || kv.first == addr;
+    if (!touches)
+      continue;
+    if (it->size() == 1) {
+      it->front().second = value;
+      return true;
+    }
+    break;
+  }
+  return this->push_write_({{addr, value}});
+}
+
+// The value a register will hold once everything already issued has landed:
+// the newest queued write, else the write awaiting its ACK, else the mirror.
+// Comparing against the mirror alone would drop an "off" that follows a
+// still-pending "on".
+bool FujitsuAC::expected_reg_(uint16_t addr, uint16_t &out) const {
+  for (auto it = this->write_queue_.rbegin(); it != this->write_queue_.rend(); ++it) {
+    for (const auto &kv : *it) {
+      if (kv.first == addr) {
+        out = kv.second;
+        return true;
+      }
+    }
+  }
+  for (const auto &kv : this->in_flight_write_) {
+    if (kv.first == addr) {
+      out = kv.second;
+      return true;
+    }
+  }
+  return this->reg_(addr, out);
+}
+
+bool FujitsuAC::push_write_(const std::vector<std::pair<uint16_t, uint16_t>> &regs) {
+  if (this->write_queue_.size() >= MAX_PENDING_WRITES) {
+    ESP_LOGW(TAG, "Write queue full, dropping write 0x%04X", regs[0].first);
+    return false;
+  }
+  this->write_queue_.push_back(regs);
   return true;
 }
 
@@ -711,13 +767,12 @@ bool FujitsuAC::queue_write_group_(const std::vector<std::pair<uint16_t, uint16_
       return false;  // the frame is atomic (§11) — drop it entirely if any member is blocked
     }
     uint16_t cur;
-    if (!this->reg_(kv.first, cur) || cur != kv.second)
+    if (!this->expected_reg_(kv.first, cur) || cur != kv.second)
       all_unchanged = false;
   }
   if (all_unchanged)
     return true;  // every register already at target — accepted, nothing to send
-  this->write_queue_.push_back(regs);
-  return true;
+  return this->push_write_(regs);
 }
 
 void FujitsuAC::control(const climate::ClimateCall &call) {
